@@ -7,6 +7,7 @@ load_dotenv()
 # Flask Configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+FLASK_ENV = os.getenv("FLASK_ENV", "production")
 PORT = 5000
 
 # Supabase Configuration
