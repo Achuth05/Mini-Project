@@ -6,11 +6,13 @@ load_dotenv()
 
 # Flask Configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
+FLASK_ENV = os.getenv("FLASK_ENV")
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 PORT = 5000
 
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
+# service key is used by both flask and supabase configuration
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 # Optional: Validate required variables

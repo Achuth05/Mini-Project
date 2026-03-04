@@ -1,14 +1,14 @@
 from supabase import create_client, Client
-import config
+from ..config import SUPABASE_URL, SUPABASE_KEY
 
-if not config.SUPABASE_URL or not config.SUPABASE_KEY:
+if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("Supabase credentials are missing in environment variables.")
 
 # Create single Supabase client instance
-supabase: Client = create_client(
-    config.SUPABASE_URL,
-    config.SUPABASE_KEY
+sb: Client = create_client(
+    SUPABASE_URL,
+    SUPABASE_KEY
 )
 
 # Export the client
-__all__ = ["supabase"]
+__all__ = ["sb"]

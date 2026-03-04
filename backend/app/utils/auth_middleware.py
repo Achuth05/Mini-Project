@@ -1,12 +1,14 @@
 import os
 from functools import wraps
+from dotenv import load_dotenv
 from flask import request, jsonify, g
 from supabase import create_client, Client
 
+load_dotenv()
 # Initialize Supabase Client
 url = os.getenv("SUPABASE_URL")
 key = os.getenv("SUPABASE_KEY") # Use Service Role for admin-level role checks
-supabase: Client = create_client(url, key)
+sb: Client = create_client(url, key)
 
 def require_auth(f):
     @wraps(f)
@@ -19,7 +21,7 @@ def require_auth(f):
         
         try:
             # Verify JWT with Supabase Auth
-            user = supabase.auth.get_user(token)
+            user = sb.auth.get_user(token)
             # Attach user object to Flask's global 'g' for use in routes
             g.user = user.user
         except Exception as e:
@@ -38,7 +40,7 @@ def require_role(required_role):
             
             # Query your 'profiles' table for the user's role
             user_id = g.user.id
-            response = supabase.table("profiles").select("role").eq("id", user_id).single().execute()
+            response = sb.table("profiles").select("role").eq("id", user_id).single().execute()
             
             if not response.data or response.data.get("role") != required_role:
                 return jsonify({"message": f"Access denied. Requires {required_role} role"}), 403
