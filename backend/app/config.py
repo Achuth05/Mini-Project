@@ -8,6 +8,7 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
 FLASK_ENV = os.getenv("FLASK_ENV")
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+FLASK_ENV = os.getenv("FLASK_ENV", "production")
 PORT = 5000
 
 # Supabase Configuration
