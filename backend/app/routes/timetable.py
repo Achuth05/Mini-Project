@@ -19,9 +19,9 @@ def generate():
 
     def run_crew():
         try:
-            # CrewAI plugs in here — Step 2
-            # from ..agents.crew import run_scheduling_crew
-            # run_scheduling_crew(generation_id)
+            from ..agents.crew import run_scheduling_crew
+            run_scheduling_crew(generation_id)
+            # crew.py updates its own dict — sync it here too
             generation_status[generation_id] = 'completed'
         except Exception as e:
             generation_status[generation_id] = f'failed: {str(e)}'
@@ -45,15 +45,14 @@ def get_status(generation_id):
         'status': status
     })
 
-
 @timetable_bp.route('/api/timetable', methods=['GET'])
 @require_auth
 def get_timetable():
     try:
-        semester        = request.args.get('semester')
-        batch           = request.args.get('batch')
-        faculty_id      = request.args.get('faculty_id')
-        status          = request.args.get('status', 'published')
+        semester   = request.args.get('semester')
+        batch      = request.args.get('batch')
+        faculty_id = request.args.get('faculty_id')
+        status     = request.args.get('status', 'published')
 
         query = sb.table('timetable_entries') \
             .select('*, subjects(*), faculty(*), rooms(*), time_slots(*), batches(*)') \
@@ -108,21 +107,3 @@ def update_entry(entry_id):
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-## Empty `__init__.py` files
-
-"""Create these three files completely empty:
-
-- `app/routes/__init__.py`
-- `app/utils/__init__.py`
-- `app/agents/__init__.py`
-
----
-
-## Quick Test Checklist After Setting Up
-```
-GET  http://localhost:5000/api/health              → { "status": "ok" }
-GET  http://localhost:5000/api/auth/me             → 401 without token
-GET  http://localhost:5000/api/dashboard/stats     → 403 with faculty token
-GET  http://localhost:5000/api/dashboard/stats     → data with admin token
-POST http://localhost:5000/api/timetable/generate  → { generation_id, status }"""

@@ -37,9 +37,20 @@ def get_subjects_tool(query: str = "") -> str:
 
 
 @tool("Get Allotments Tool")
-def get_allotments_tool(query: str = "") -> str:
-    """Fetches all 190 subject allotments with faculty, subject, batch details and roles."""
+def get_allotments_tool(semester: str = "2") -> str:
+    """Fetches subject allotments filtered by semester. Pass semester number as string."""
     try:
+        # First get batch IDs for this semester
+        batches = sb.table("batches") \
+            .select("id") \
+            .eq("semester", int(semester)) \
+            .execute()
+        
+        batch_ids = [b["id"] for b in batches.data]
+        
+        if not batch_ids:
+            return json.dumps([])
+        
         result = sb.table("subject_allotments") \
             .select("""
                 id,
@@ -49,6 +60,7 @@ def get_allotments_tool(query: str = "") -> str:
                 subject:subject_id (id, subject_name, scheme_raw, lecture_hours, tutorial_hours, practical_hours),
                 batch:batch_id (id, batch_name, semester, program)
             """) \
+            .in_("batch_id", batch_ids) \
             .execute()
         return json.dumps(result.data)
     except Exception as e:
@@ -82,16 +94,16 @@ def get_timeslots_tool(query: str = "") -> str:
 
 
 @tool("Get Batches Tool")
-def get_batches_tool(query: str = "") -> str:
-    """Fetches all 19 batches with their semester and program details."""
+def get_batches_tool(semester: str = "2") -> str:
+    """Fetches batches filtered by semester. Pass semester number as string."""
     try:
         result = sb.table("batches") \
             .select("id, batch_name, semester, program, academic_year") \
+            .eq("semester", int(semester)) \
             .execute()
         return json.dumps(result.data)
     except Exception as e:
         return json.dumps({"error": str(e)})
-
 
 @tool("Get Availability Tool")
 def get_availability_tool(query: str = "") -> str:
