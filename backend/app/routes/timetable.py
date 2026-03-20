@@ -37,9 +37,15 @@ def generate():
 @require_auth
 def get_status(generation_id):
     status = generation_status.get(generation_id, 'not_found')
+    if isinstance(status, dict):
+        return jsonify({
+            'generation_id': generation_id,
+            'status':        status['status'],
+            'result':        status['result']
+        })
     return jsonify({
         'generation_id': generation_id,
-        'status': status
+        'status':        status
     })
 
 @timetable_bp.route('/api/timetable', methods=['GET'])

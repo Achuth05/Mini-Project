@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 from crewai.tools import tool
 from ortools.sat.python import cp_model
+from collections import defaultdict
 
 load_dotenv()
 
@@ -11,82 +12,7 @@ url = os.getenv("SUPABASE_URL")
 key = os.getenv("SUPABASE_KEY")
 sb: Client = create_client(url, key)
 
-def _debug_infeasible(model, all_vars, allot_vars, allotments_sorted, 
-                       slots_raw, all_rooms, slot_ids, practical_pairs):
-    """Remove constraints one by one to find which causes INFEASIBLE"""
-    from ortools.sat.python import cp_model
-    
-    print("\n[DEBUG] Testing individual constraints...")
-    
-    # Test 1: Can each allotment be assigned ignoring ALL conflicts?
-    print("\n[DEBUG] Test 1: Checking vars count per allotment")
-    for allot in allotments_sorted:
-        aid = allot["id"]
-        count = len(allot_vars.get(aid, []))
-        faculty_code = allot["faculty"]["faculty_code"]
-        subject_name = allot["subject"]["subject_name"]
-        role = allot.get("role", "")
-        print(f"  {faculty_code} | {subject_name} | {role} | vars={count}")
-    
-    # Test 2: Check consecutive pairs exist for each practical
-    print("\n[DEBUG] Test 2: Consecutive pairs per practical")
-    for allot in allotments_sorted:
-        aid = allot["id"]
-        role = allot.get("role", "")
-        if role != "practical":
-            continue
-        
-        vars_list = allot_vars.get(aid, [])
-        pair_count = 0
-        for idx1, (si1, ri1, var1) in enumerate(vars_list):
-            for idx2, (si2, ri2, var2) in enumerate(vars_list):
-                if si1 >= si2 or ri1 != ri2:
-                    continue
-                slot1 = slots_raw[si1]
-                slot2 = slots_raw[si2]
-                day1 = slot1.get("day") or slot1.get("day_of_week")
-                day2 = slot2.get("day") or slot2.get("day_of_week")
-                if day1 != day2:
-                    continue
-                sn1 = slot1.get("slot_number") or slot1.get("period") or 0
-                sn2 = slot2.get("slot_number") or slot2.get("period") or 0
-                if sn2 - sn1 == 1:
-                    pair_count += 1
-        
-        faculty_code = allot["faculty"]["faculty_code"]
-        subject_name = allot["subject"]["subject_name"]
-        batch_name   = allot["batch"]["batch_name"]
-        print(f"  {batch_name} | {faculty_code} | {subject_name} | consecutive_pairs={pair_count}")
-    
-    # Test 3: Check practical pairs have overlapping slots
-    print("\n[DEBUG] Test 3: Practical pair slot overlap")
-    for (batch_id, subject_id), pair in practical_pairs.items():
-        aid1 = pair[0]["id"]
-        aid2 = pair[1]["id"]
-        f1   = pair[0]["faculty"]["faculty_code"]
-        f2   = pair[1]["faculty"]["faculty_code"]
-        subj = pair[0]["subject"]["subject_name"]
-        batch = pair[0]["batch"]["batch_name"]
-        
-        slots1 = set(si for (si, ri, v) in allot_vars.get(aid1, []))
-        slots2 = set(si for (si, ri, v) in allot_vars.get(aid2, []))
-        overlap = slots1 & slots2
-        print(f"  {batch} | {subj} | {f1}+{f2} | "
-              f"slots1={len(slots1)} slots2={len(slots2)} overlap={len(overlap)}")
-    
-    # Test 4: Faculty availability
-    print("\n[DEBUG] Test 4: Faculty with very few available slots")
-    faculty_slot_count = {}
-    for allot in allotments_sorted:
-        aid = allot["id"]
-        fc  = allot["faculty"]["faculty_code"]
-        count = len(set(si for (si, ri, v) in allot_vars.get(aid, [])))
-        if fc not in faculty_slot_count:
-            faculty_slot_count[fc] = 0
-        faculty_slot_count[fc] += count
-    
-    for fc, count in sorted(faculty_slot_count.items(), key=lambda x: x[1]):
-        print(f"  {fc}: {count} total available slot-room combos")
+
 # ─────────────────────────────────────────────
 #  DB FETCH TOOLS
 # ─────────────────────────────────────────────
@@ -213,7 +139,7 @@ def save_timetable_tool(entries: str) -> str:
 
 
 # ─────────────────────────────────────────────
-#  HELPER: get slot day/number safely
+#  HELPERS
 # ─────────────────────────────────────────────
 
 def _slot_day(slot):
@@ -292,10 +218,6 @@ def _run_scheduler(generation_id: str, semester: int = 2):
         return slot.get("slot_number") or slot.get("period") or 0
 
     # ── 4. Group allotments ────────────────────────────────────────
-    # Practical pairs: same batch + same subject → ONE session
-    # Both faculty attend same lab, same slot, same room
-
-    from collections import defaultdict
 
     practical_sessions = []
     lecture_allotments = []
@@ -311,12 +233,12 @@ def _run_scheduler(generation_id: str, semester: int = 2):
 
     for (bid, sid), group in prac_groups.items():
         practical_sessions.append({
-            "batch_id":    bid,
-            "subject_id":  sid,
-            "batch":       group[0]["batch"],
-            "subject":     group[0]["subject"],
+            "batch_id":     bid,
+            "subject_id":   sid,
+            "batch":        group[0]["batch"],
+            "subject":      group[0]["subject"],
             "faculty_list": group,
-            "role":        "practical"
+            "role":         "practical"
         })
 
     print(f"[Scheduler] Practical sessions: {len(practical_sessions)}, "
@@ -327,11 +249,12 @@ def _run_scheduler(generation_id: str, semester: int = 2):
     model = cp_model.CpModel()
 
     prac_slot_vars = defaultdict(list)  # sess_idx → [(si, ri, var)]
-    lec_slot_vars  = defaultdict(list)  # aid → [(si, ri, var)]
+    lec_slot_vars  = defaultdict(list)  # aid      → [(si, ri, var)]
 
     print(f"[Scheduler] Building vars...")
 
-    # Practical session vars
+    # Practical session vars — one var per (slot, room) combo
+    # Only created if ALL faculty in session are free at that slot
     for sess_idx, sess in enumerate(practical_sessions):
         faculty_list = sess["faculty_list"]
         for ri, room in enumerate(all_rooms):
@@ -339,7 +262,6 @@ def _run_scheduler(generation_id: str, semester: int = 2):
                 continue
             for si in range(num_slots):
                 slot_id = slot_ids[si]
-                # All faculty in session must be free
                 if any((f["faculty"]["id"], slot_id) in unavailable
                        for f in faculty_list):
                     continue
@@ -364,26 +286,40 @@ def _run_scheduler(generation_id: str, semester: int = 2):
 
     print(f"[Scheduler] Adding constraints...")
 
-    # C1a: Each practical session = exactly 2 consecutive slots same room same day
+    # ── C1a: Each practical = exactly one consecutive pair ──────────
+    # Also precompute valid pairs for use in C2/C3/C4
+    prac_valid_pairs = {}  # sess_idx → [(si1, ri1, v1, si2, ri2, v2)]
+
     for sess_idx, sess in enumerate(practical_sessions):
-        vars_list = prac_slot_vars[sess_idx]
+        vars_list  = prac_slot_vars[sess_idx]
         batch_name = sess["batch"]["batch_name"]
         subj_name  = sess["subject"]["subject_name"]
 
         if not vars_list:
             print(f"[Scheduler] WARNING: No vars for practical "
                   f"{batch_name}/{subj_name}")
+            prac_valid_pairs[sess_idx] = []
             continue
+
+        # Build (si,ri) → var map for fast lookup
+        var_map = {(si, ri): var for (si, ri, var) in vars_list}
 
         valid_pairs = []
         for (si1, ri1, v1) in vars_list:
-            for (si2, ri2, v2) in vars_list:
-                if si1 >= si2 or ri1 != ri2:
-                    continue
-                if _day(slots_raw[si1]) != _day(slots_raw[si2]):
-                    continue
-                if _period(slots_raw[si2]) - _period(slots_raw[si1]) == 1:
-                    valid_pairs.append((v1, v2))
+            si2 = si1 + 1
+            ri2 = ri1
+            if (si2, ri2) not in var_map:
+                continue
+            if si2 >= num_slots:
+                continue
+            if _day(slots_raw[si1]) != _day(slots_raw[si2]):
+                continue
+            if _period(slots_raw[si2]) - _period(slots_raw[si1]) != 1:
+                continue
+            v2 = var_map[(si2, ri2)]
+            valid_pairs.append((si1, ri1, v1, si2, ri2, v2))
+
+        prac_valid_pairs[sess_idx] = valid_pairs
 
         if not valid_pairs:
             print(f"[Scheduler] WARNING: No consecutive pairs for "
@@ -395,7 +331,7 @@ def _run_scheduler(generation_id: str, semester: int = 2):
 
         # Exactly one consecutive pair chosen
         indicators = []
-        for idx, (v1, v2) in enumerate(valid_pairs):
+        for idx, (si1, ri1, v1, si2, ri2, v2) in enumerate(valid_pairs):
             b = model.NewBoolVar(f"cp_ps{sess_idx}_{idx}")
             model.AddImplication(b, v1)
             model.AddImplication(b, v2)
@@ -403,13 +339,19 @@ def _run_scheduler(generation_id: str, semester: int = 2):
 
         model.AddExactlyOne(indicators)
 
-        # All other vars must be 0
-        valid_vs = set(v for v1, v2 in valid_pairs for v in (v1, v2))
+        # All vars not in any valid pair must be 0
+        valid_vs = set()
+        for (si1, ri1, v1, si2, ri2, v2) in valid_pairs:
+            valid_vs.add(v1)
+            valid_vs.add(v2)
         for (si, ri, var) in vars_list:
             if var not in valid_vs:
                 model.Add(var == 0)
 
-    # C1b: Each lecture = correct number of slots
+        # Exactly 2 slots total
+        model.Add(sum(var for (si, ri, var) in vars_list) == 2)
+
+    # ── C1b: Each lecture = correct number of slots ─────────────────
     for allot in lecture_allotments:
         aid  = allot["id"]
         subj = allot["subject"]
@@ -425,14 +367,27 @@ def _run_scheduler(generation_id: str, semester: int = 2):
             sum(v for _, _, v in lec_slot_vars[aid]) == slots_needed
         )
 
-    # C2: Faculty not double-booked
+    # ── C1c: Max 1 lecture per day per allotment ────────────────────
+    for allot in lecture_allotments:
+        aid = allot["id"]
+        vars_by_day = defaultdict(list)
+        for (si, ri, var) in lec_slot_vars[aid]:
+            vars_by_day[_day(slots_raw[si])].append(var)
+        for day_vars in vars_by_day.values():
+            model.Add(sum(day_vars) <= 1)
+
+    # ── C2: Faculty not double-booked ───────────────────────────────
+    # Practicals: faculty occupies BOTH slots of the chosen pair
+    # So we use the first slot var (v1) as indicator for both si1 and si2
     faculty_slot = defaultdict(list)
 
     for sess_idx, sess in enumerate(practical_sessions):
-        for (si, ri, var) in prac_slot_vars[sess_idx]:
+        valid_pairs = prac_valid_pairs.get(sess_idx, [])
+        for (si1, ri1, v1, si2, ri2, v2) in valid_pairs:
             for f_allot in sess["faculty_list"]:
                 fid = f_allot["faculty"]["id"]
-                faculty_slot[(fid, si)].append(var)
+                faculty_slot[(fid, si1)].append(v1)
+                faculty_slot[(fid, si2)].append(v1)
 
     for allot in lecture_allotments:
         aid = allot["id"]
@@ -443,12 +398,14 @@ def _run_scheduler(generation_id: str, semester: int = 2):
     for vlist in faculty_slot.values():
         model.Add(sum(vlist) <= 1)
 
-    # C3: Room not double-booked
+    # ── C3: Room not double-booked ──────────────────────────────────
     room_slot = defaultdict(list)
 
     for sess_idx in range(len(practical_sessions)):
-        for (si, ri, var) in prac_slot_vars[sess_idx]:
-            room_slot[(ri, si)].append(var)
+        valid_pairs = prac_valid_pairs.get(sess_idx, [])
+        for (si1, ri1, v1, si2, ri2, v2) in valid_pairs:
+            room_slot[(ri1, si1)].append(v1)
+            room_slot[(ri1, si2)].append(v1)
 
     for allot in lecture_allotments:
         aid = allot["id"]
@@ -458,13 +415,15 @@ def _run_scheduler(generation_id: str, semester: int = 2):
     for vlist in room_slot.values():
         model.Add(sum(vlist) <= 1)
 
-    # C4: Batch not double-booked
+    # ── C4: Batch not double-booked ─────────────────────────────────
     batch_slot = defaultdict(list)
 
     for sess_idx, sess in enumerate(practical_sessions):
-        bid = sess["batch_id"]
-        for (si, ri, var) in prac_slot_vars[sess_idx]:
-            batch_slot[(bid, si)].append(var)
+        bid         = sess["batch_id"]
+        valid_pairs = prac_valid_pairs.get(sess_idx, [])
+        for (si1, ri1, v1, si2, ri2, v2) in valid_pairs:
+            batch_slot[(bid, si1)].append(v1)
+            batch_slot[(bid, si2)].append(v1)
 
     for allot in lecture_allotments:
         aid = allot["id"]
@@ -491,14 +450,11 @@ def _run_scheduler(generation_id: str, semester: int = 2):
             f"Status: {solver.StatusName(status)}"
         )
 
-    # ── 8. Save to DB ──────────────────────────────────────────────
-
-    # ── 8. Extract solution as JSON ────────────────────────────────
+    # ── 8. Extract solution ────────────────────────────────────────
 
     print(f"[Scheduler] Extracting solution...")
     entries = []
 
-    # Practical: one entry per faculty per slot
     for sess_idx, sess in enumerate(practical_sessions):
         for (si, ri, var) in prac_slot_vars[sess_idx]:
             if solver.Value(var) == 1:
@@ -506,16 +462,15 @@ def _run_scheduler(generation_id: str, semester: int = 2):
                 room = all_rooms[ri]
                 for f_allot in sess["faculty_list"]:
                     entries.append({
-                        "subject":    sess["subject"]["subject_name"],
-                        "faculty":    f_allot["faculty"]["faculty_code"],
-                        "room":       room["room_code"],
-                        "day":        _day(slot),
-                        "slot":       _period(slot),
-                        "batch":      sess["batch"]["batch_name"],
-                        "role":       "practical"
+                        "subject": sess["subject"]["subject_name"],
+                        "faculty": f_allot["faculty"]["faculty_code"],
+                        "room":    room["room_code"],
+                        "day":     _day(slot),
+                        "slot":    _period(slot),
+                        "batch":   sess["batch"]["batch_name"],
+                        "role":    "practical"
                     })
 
-    # Lectures: one entry per slot
     for allot in lecture_allotments:
         aid = allot["id"]
         for (si, ri, var) in lec_slot_vars[aid]:
@@ -523,21 +478,21 @@ def _run_scheduler(generation_id: str, semester: int = 2):
                 slot = slots_raw[si]
                 room = all_rooms[ri]
                 entries.append({
-                    "subject":  allot["subject"]["subject_name"],
-                    "faculty":  allot["faculty"]["faculty_code"],
-                    "room":     room["room_code"],
-                    "day":      _day(slot),
-                    "slot":     _period(slot),
-                    "batch":    allot["batch"]["batch_name"],
-                    "role":     allot.get("role", "lecture")
+                    "subject": allot["subject"]["subject_name"],
+                    "faculty": allot["faculty"]["faculty_code"],
+                    "room":    room["room_code"],
+                    "day":     _day(slot),
+                    "slot":    _period(slot),
+                    "batch":   allot["batch"]["batch_name"],
+                    "role":    allot.get("role", "lecture")
                 })
 
-    # Sort by batch, day, slot for readability
     entries.sort(key=lambda x: (x["batch"], x["day"], x["slot"]))
 
     print(f"[Scheduler] Total entries: {len(entries)}")
 
-    # Pretty print to terminal
+    # ── 9. Pretty print ────────────────────────────────────────────
+
     print("\n" + "="*60)
     print(f"TIMETABLE — Semester {semester} BTech")
     print(f"Solver: {solver.StatusName(status)}")
@@ -549,7 +504,7 @@ def _run_scheduler(generation_id: str, semester: int = 2):
         if e["batch"] != current_batch:
             current_batch = e["batch"]
             print(f"\n--- Batch {current_batch} ---")
-        print(f"  {e['day']} Slot{e['slot']} | "
+        print(f"  {e['day']:<12} Slot{e['slot']} | "
               f"{e['subject']:<8} | {e['role']:<10} | "
               f"{e['faculty']:<6} | {e['room']}")
 
