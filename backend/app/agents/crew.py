@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from collections import defaultdict
 
 load_dotenv()
 
@@ -139,11 +140,26 @@ def _run_crew_for_semester(generation_id: str, semester: int):
     crew.kickoff()
 
 
-def run_scheduling_crew(generation_id: str):
+def run_scheduling_crew(generation_id: str, semester: int = 2):
+    from .tools import sb
+
     generation_status[generation_id] = "running"
     try:
         _run_crew_for_semester(generation_id, semester=2)
         generation_status[generation_id] = "completed"
+
+        print(f"\n[Orchestrator] ✅ All agents completed successfully")
+        # FIX: check which keys exist
+        if result.get("status") == "failed":
+            print(f"[Orchestrator] ❌ Validation failed: "
+                  f"{len(result.get('conflicts', []))} conflicts")
+        else:
+            print(f"[Orchestrator] Total entries: {result['total_entries']}")
+            print(f"[Orchestrator] Validation: {result['validation']}")
+
+        return result
+
     except Exception as e:
         generation_status[generation_id] = f"failed: {str(e)}"
+        print(f"\n[Orchestrator] ❌ Failed: {str(e)}")
         raise e

@@ -3,12 +3,9 @@ import threading
 from flask import Blueprint, request, jsonify
 from ..utils.auth_middleware import require_auth, require_role
 from ..utils.supabase_client import sb
+from ..agents.crew import generation_status
 
 timetable_bp = Blueprint('timetable', __name__)
-
-# In-memory generation status tracker
-generation_status = {}
-
 
 @timetable_bp.route('/api/timetable/generate', methods=['POST'])
 @require_auth
@@ -40,9 +37,15 @@ def generate():
 @require_auth
 def get_status(generation_id):
     status = generation_status.get(generation_id, 'not_found')
+    if isinstance(status, dict):
+        return jsonify({
+            'generation_id': generation_id,
+            'status':        status['status'],
+            'result':        status['result']
+        })
     return jsonify({
         'generation_id': generation_id,
-        'status': status
+        'status':        status
     })
 
 @timetable_bp.route('/api/timetable', methods=['GET'])
@@ -59,7 +62,13 @@ def get_timetable():
             .eq('status', status)
 
         if semester:
-            query = query.eq('semester', int(semester))
+            batch_ids = sb.table('batches') \
+                .select('id') \
+                .eq('semester', int(semester)) \
+                .execute().data
+            ids = [b['id'] for b in batch_ids]
+            if ids:
+                query = query.in_('batch_id', ids)
         if batch:
             query = query.eq('batches.batch_name', batch)
         if faculty_id:
@@ -72,7 +81,7 @@ def get_timetable():
         return jsonify({'error': str(e)}), 500
 
 
-@timetable_bp.route('/api/timetable/publish/<generation_id>', methods=['POST'])
+@timetable_bp.route('/api/timetable/publish/<generation_id>', methods=['PUT'])
 @require_auth
 @require_role('admin')
 def publish(generation_id):

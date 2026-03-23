@@ -3,6 +3,8 @@ import json
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from crewai.tools import tool
+from ortools.sat.python import cp_model
+from collections import defaultdict
 
 load_dotenv()
 
@@ -10,6 +12,10 @@ url = os.getenv("SUPABASE_URL")
 key = os.getenv("SUPABASE_KEY")
 sb: Client = create_client(url, key)
 
+
+# ─────────────────────────────────────────────
+#  DB FETCH TOOLS
+# ─────────────────────────────────────────────
 
 @tool("Get Faculty Tool")
 def get_faculty_tool(query: str = "") -> str:
@@ -55,6 +61,7 @@ def get_batches_tool(semester: str = "2") -> str:
     """Get batches for semester. Returns id, name."""
     rows = sb.table("batches").select("id,batch_name,semester").eq("semester", int(semester)).execute()
     return json.dumps(rows.data)
+
 
 
 @tool("Get Availability Tool")
