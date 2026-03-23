@@ -13,210 +13,98 @@ sb: Client = create_client(url, key)
 
 @tool("Get Faculty Tool")
 def get_faculty_tool(query: str = "") -> str:
-    """Fetches all active faculty members from the database with their codes and hour limits."""
-    try:
-        result = sb.table("faculty") \
-            .select("id, faculty_code, full_name, faculty_type, max_hours_per_week") \
-            .eq("is_active", True) \
-            .execute()
-        return json.dumps(result.data)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    """Get active faculty. Returns id, code, max_hours."""
+    rows = sb.table("faculty").select("id,faculty_code,max_hours_per_week").eq("is_active", True).execute()
+    return json.dumps(rows.data)
 
 
 @tool("Get Subjects Tool")
 def get_subjects_tool(query: str = "") -> str:
-    """Fetches all subjects with their scheme details including L, T, P values."""
-    try:
-        result = sb.table("subjects") \
-            .select("id, subject_code, subject_name, scheme_raw, lecture_hours, tutorial_hours, practical_hours, total_required_hours, semester, program") \
-            .execute()
-        return json.dumps(result.data)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    """Get subjects. Returns id, code, L, T, P values."""
+    rows = sb.table("subjects").select("id,subject_code,lecture_hours,tutorial_hours,practical_hours").execute()
+    return json.dumps(rows.data)
 
 
 @tool("Get Allotments Tool")
 def get_allotments_tool(semester: str = "2") -> str:
-    """Fetches subject allotments filtered by semester. Pass semester number as string."""
-    try:
-        # First get batch IDs for this semester
-        batches = sb.table("batches") \
-            .select("id") \
-            .eq("semester", int(semester)) \
-            .execute()
-        
-        batch_ids = [b["id"] for b in batches.data]
-        
-        if not batch_ids:
-            return json.dumps([])
-        
-        result = sb.table("subject_allotments") \
-            .select("""
-                id,
-                role,
-                assigned_hours,
-                faculty:faculty_id (id, faculty_code, max_hours_per_week),
-                subject:subject_id (id, subject_name, scheme_raw, lecture_hours, tutorial_hours, practical_hours),
-                batch:batch_id (id, batch_name, semester, program)
-            """) \
-            .in_("batch_id", batch_ids) \
-            .execute()
-        return json.dumps(result.data)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    """Get allotments for semester. Returns subject_id, faculty_id, batch_id."""
+    batches = sb.table("batches").select("id").eq("semester", int(semester)).execute()
+    batch_ids = [b["id"] for b in batches.data]
+    if not batch_ids:
+        return json.dumps([])
+    rows = sb.table("subject_allotments").select("id,subject_id,faculty_id,batch_id,role").in_("batch_id", batch_ids).execute()
+    return json.dumps(rows.data)
 
 
 @tool("Get Rooms Tool")
 def get_rooms_tool(query: str = "") -> str:
-    """Fetches all available rooms with their capacity and type (classroom or lab)."""
-    try:
-        result = sb.table("rooms") \
-            .select("id, room_code, room_name, capacity, room_type") \
-            .execute()
-        return json.dumps(result.data)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    """Get all rooms. Returns id, name, type."""
+    rows = sb.table("rooms").select("id,room_name,room_type").execute()
+    return json.dumps(rows.data)
 
 
 @tool("Get Time Slots Tool")
 def get_timeslots_tool(query: str = "") -> str:
-    """Fetches all 30 time slots (6 periods x 5 days) ordered by day and period number."""
-    try:
-        result = sb.table("time_slots") \
-            .select("id, day, slot_number, slot_label") \
-            .order("day") \
-            .order("slot_number") \
-            .execute()
-        return json.dumps(result.data)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    """Get 30 time slots ordered by day and period. Returns id, day, slot_number."""
+    rows = sb.table("time_slots").select("id,day_of_week,slot_number").order("day_of_week").order("slot_number").execute()
+    return json.dumps(rows.data)
 
 
 @tool("Get Batches Tool")
 def get_batches_tool(semester: str = "2") -> str:
-    """Fetches batches filtered by semester. Pass semester number as string."""
-    try:
-        result = sb.table("batches") \
-            .select("id, batch_name, semester, program, academic_year") \
-            .eq("semester", int(semester)) \
-            .execute()
-        return json.dumps(result.data)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    """Get batches for semester. Returns id, name."""
+    rows = sb.table("batches").select("id,batch_name,semester").eq("semester", int(semester)).execute()
+    return json.dumps(rows.data)
+
 
 @tool("Get Availability Tool")
 def get_availability_tool(query: str = "") -> str:
-    """Fetches faculty unavailability slots. Returns empty list if none set."""
-    try:
-        result = sb.table("faculty_availability") \
-            .select("faculty_id, time_slot_id, reason") \
-            .execute()
-        return json.dumps(result.data)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    """Get faculty unavailability. Returns faculty_id, time_slot_id."""
+    rows = sb.table("faculty_availability").select("faculty_id,time_slot_id").execute()
+    return json.dumps(rows.data)
 
 
 @tool("Check Conflict Tool")
 def check_conflict_tool(assignment: str) -> str:
-    """
-    Checks if a proposed timetable assignment has any conflicts.
-    Input must be a JSON string with keys:
-    faculty_id, room_id, time_slot_id, batch_id, generation_id
-    Returns {"conflict": false} or {"conflict": true, "reason": "..."}
-    """
+    """Check conflicts. Input JSON: {faculty_id, room_id, time_slot_id, batch_id, generation_id}. Returns {conflict: bool, reason: str}"""
     try:
-        data = json.loads(assignment)
-        faculty_id    = data.get("faculty_id")
-        room_id       = data.get("room_id")
-        time_slot_id  = data.get("time_slot_id")
-        batch_id      = data.get("batch_id")
-        generation_id = data.get("generation_id")
+        a = json.loads(assignment)
+        faculty_id = a.get("faculty_id")
+        room_id = a.get("room_id")
+        time_slot_id = a.get("time_slot_id")
+        batch_id = a.get("batch_id")
+        generation_id = a.get("generation_id")
+
+        base = sb.table("timetable_entries").select("id").eq("time_slot_id", time_slot_id).eq("generation_id", generation_id)
 
         # Check faculty conflict
-        faculty_conflict = sb.table("timetable_entries") \
-            .select("id") \
-            .eq("faculty_id", faculty_id) \
-            .eq("time_slot_id", time_slot_id) \
-            .eq("generation_id", generation_id) \
-            .execute()
-
-        if faculty_conflict.data:
-            return json.dumps({
-                "conflict": True,
-                "reason": "Faculty already assigned in this time slot"
-            })
+        fc = base.eq("faculty_id", faculty_id).execute()
+        if fc.data:
+            return json.dumps({"conflict": True, "reason": "faculty_busy"})
 
         # Check room conflict
-        room_conflict = sb.table("timetable_entries") \
-            .select("id") \
-            .eq("room_id", room_id) \
-            .eq("time_slot_id", time_slot_id) \
-            .eq("generation_id", generation_id) \
-            .execute()
-
-        if room_conflict.data:
-            return json.dumps({
-                "conflict": True,
-                "reason": "Room already booked in this time slot"
-            })
+        rc = base.eq("room_id", room_id).execute()
+        if rc.data:
+            return json.dumps({"conflict": True, "reason": "room_busy"})
 
         # Check batch conflict
-        batch_conflict = sb.table("timetable_entries") \
-            .select("id") \
-            .eq("batch_id", batch_id) \
-            .eq("time_slot_id", time_slot_id) \
-            .eq("generation_id", generation_id) \
-            .execute()
+        bc = base.eq("batch_id", batch_id).execute()
+        if bc.data:
+            return json.dumps({"conflict": True, "reason": "batch_busy"})
 
-        if batch_conflict.data:
-            return json.dumps({
-                "conflict": True,
-                "reason": "Batch already scheduled in this time slot"
-            })
-
-        return json.dumps({"conflict": False})
-
+        return json.dumps({"conflict": False, "reason": "ok"})
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps({"conflict": True, "reason": str(e)})
 
 
 @tool("Save Timetable Tool")
 def save_timetable_tool(entries: str) -> str:
-    """
-    Saves validated timetable entries to the database.
-    Input must be a JSON string containing a list of timetable entry objects.
-    Each entry needs: subject_id, faculty_id, room_id, time_slot_id, batch_id,
-    generation_id, role, status
-    """
+    """Save timetable entries. Input: JSON list of {subject_id, faculty_id, room_id, time_slot_id, batch_id, generation_id, role}"""
     try:
-        data    = json.loads(entries)
-        saved   = 0
-        failed  = 0
-        errors  = []
-
-        for entry in data:
-            try:
-                sb.table("timetable_entries").insert({
-                    "subject_id":    entry["subject_id"],
-                    "faculty_id":    entry["faculty_id"],
-                    "room_id":       entry["room_id"],
-                    "time_slot_id":  entry["time_slot_id"],
-                    "batch_id":      entry["batch_id"],
-                    "generation_id": entry["generation_id"],
-                    "role":          entry.get("role", "lecture"),
-                    "status":        "draft"
-                }).execute()
-                saved += 1
-            except Exception as e:
-                failed += 1
-                errors.append(str(e))
-
-        return json.dumps({
-            "saved":  saved,
-            "failed": failed,
-            "errors": errors
-        })
-
+        data = json.loads(entries)
+        if not isinstance(data, list):
+            return json.dumps({"saved": 0, "error": "Input must be a list"})
+        result = sb.table("timetable_entries").insert(data).execute()
+        return json.dumps({"saved": len(result.data), "error": None})
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps({"saved": 0, "error": str(e)})
