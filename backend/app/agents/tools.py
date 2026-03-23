@@ -3,7 +3,7 @@ import json
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from crewai.tools import tool
-from ortools.sat.python import cp_model
+
 from collections import defaultdict
 
 load_dotenv()
