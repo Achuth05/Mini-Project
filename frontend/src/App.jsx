@@ -10,7 +10,9 @@ import GenerateTimetable from './pages/admin/GenerateTimetable';
 import ManageFaculty from './pages/admin/ManageFaculty';
 import ManageRooms from './pages/admin/ManageRooms';
 import Publish from './pages/admin/Publish';
-
+import FacultyLayout from './layouts/FacultyLayout';
+import MyTimetable from './pages/faculty/MyTimetable';
+import MyAvailability from './pages/faculty/MyAvailability';
 function App() {
   return (
     <BrowserRouter>
@@ -24,9 +26,9 @@ function App() {
         <Route
           path="/faculty"
           element={
-            <ProtectedRoute>
+           
               <FacultyLayout />
-            </ProtectedRoute>
+            
           }
         >
           <Route path="timetable" element={<MyTimetable />} />
@@ -48,3 +50,5 @@ function App() {
     </BrowserRouter>
   );
 }
+
+export default App;
