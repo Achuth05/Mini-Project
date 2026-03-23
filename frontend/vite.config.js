@@ -12,4 +12,9 @@ export default defineConfig({
     }),
     tailwindcss(),
   ],
+  server: {
+    proxy: {
+      '/api': 'http://127.0.0.1:5000', // Or whatever port your Flask app uses
+    },
+  },
 })

@@ -28,26 +28,33 @@ export default function Login() {
         body: JSON.stringify({ email, password }),
       });
 
+      // --- CRITICAL FIX: Verify JSON response ---
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        console.error("Non-JSON response:", text);
+        throw new Error("Server error: Check if backend is running and proxy is configured.");
+      }
+
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Invalid credentials. Please try again.");
+        throw new Error(data.message || "Invalid credentials.");
       }
 
       // 1. Save authentication data
       localStorage.setItem("token", data.token);
-      localStorage.setItem("userRole", data.role); // Storing role from DB
-      localStorage.setItem("userName", data.name || "User");
+      localStorage.setItem("userRole", data.role);
+      localStorage.setItem("userName", data.name);
 
-      // 2. Redirect based on the role stored in DB
-      if (data.role === "admin") {
+      // 2. Redirect logic (ensure lowercase comparison for safety)
+      const userRole = data.role?.toLowerCase();
+      if (userRole === "admin") {
         navigate("/admin");
-      } else if (data.role === "faculty") {
+      } else if (userRole === "faculty") {
         navigate("/faculty/timetable");
-      } else if (data.role === "student") {
-        navigate("/student");
       } else {
-        setError("Unauthorized role. Contact admin.");
+        navigate("/student");
       }
 
     } catch (err) {
