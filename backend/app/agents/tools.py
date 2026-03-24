@@ -3,7 +3,6 @@ import json
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from crewai.tools import tool
-
 from collections import defaultdict
 
 load_dotenv()
@@ -51,8 +50,9 @@ def get_rooms_tool(query: str = "") -> str:
 
 @tool("Get Time Slots Tool")
 def get_timeslots_tool(query: str = "") -> str:
-    """Get 30 time slots ordered by day and period. Returns id, day, slot_number."""
-    rows = sb.table("time_slots").select("id,day_of_week,slot_number").order("day_of_week").order("slot_number").execute()
+    """Get all 30 time slots. Returns id and all fields."""
+    # Use select * to avoid column name issues
+    rows = sb.table("time_slots").select("*").execute()
     return json.dumps(rows.data)
 
 
@@ -61,7 +61,6 @@ def get_batches_tool(semester: str = "2") -> str:
     """Get batches for semester. Returns id, name."""
     rows = sb.table("batches").select("id,batch_name,semester").eq("semester", int(semester)).execute()
     return json.dumps(rows.data)
-
 
 
 @tool("Get Availability Tool")
@@ -82,20 +81,18 @@ def check_conflict_tool(assignment: str) -> str:
         batch_id = a.get("batch_id")
         generation_id = a.get("generation_id")
 
-        base = sb.table("timetable_entries").select("id").eq("time_slot_id", time_slot_id).eq("generation_id", generation_id)
-
         # Check faculty conflict
-        fc = base.eq("faculty_id", faculty_id).execute()
+        fc = sb.table("timetable_entries").select("id").eq("time_slot_id", time_slot_id).eq("generation_id", generation_id).eq("faculty_id", faculty_id).execute()
         if fc.data:
             return json.dumps({"conflict": True, "reason": "faculty_busy"})
 
         # Check room conflict
-        rc = base.eq("room_id", room_id).execute()
+        rc = sb.table("timetable_entries").select("id").eq("time_slot_id", time_slot_id).eq("generation_id", generation_id).eq("room_id", room_id).execute()
         if rc.data:
             return json.dumps({"conflict": True, "reason": "room_busy"})
 
         # Check batch conflict
-        bc = base.eq("batch_id", batch_id).execute()
+        bc = sb.table("timetable_entries").select("id").eq("time_slot_id", time_slot_id).eq("generation_id", generation_id).eq("batch_id", batch_id).execute()
         if bc.data:
             return json.dumps({"conflict": True, "reason": "batch_busy"})
 
@@ -111,7 +108,14 @@ def save_timetable_tool(entries: str) -> str:
         data = json.loads(entries)
         if not isinstance(data, list):
             return json.dumps({"saved": 0, "error": "Input must be a list"})
-        result = sb.table("timetable_entries").insert(data).execute()
-        return json.dumps({"saved": len(result.data), "error": None})
+        if not data:
+            return json.dumps({"saved": 0, "error": "Empty list"})
+        # Insert in batches of 50
+        saved = 0
+        for i in range(0, len(data), 50):
+            chunk = data[i:i+50]
+            result = sb.table("timetable_entries").insert(chunk).execute()
+            saved += len(result.data)
+        return json.dumps({"saved": saved, "error": None})
     except Exception as e:
         return json.dumps({"saved": 0, "error": str(e)})
