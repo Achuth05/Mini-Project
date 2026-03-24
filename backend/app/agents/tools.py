@@ -72,31 +72,43 @@ def get_availability_tool(query: str = "") -> str:
 
 @tool("Check Conflict Tool")
 def check_conflict_tool(assignment: str) -> str:
-    """Check conflicts. Input JSON: {faculty_id, room_id, time_slot_id, batch_id, generation_id}. Returns {conflict: bool, reason: str}"""
+    """
+    Checks for conflicts across the full week. 
+    Input JSON: {"faculty_id", "room_id", "time_slot_id", "batch_id", "generation_id"}
+    """
     try:
         a = json.loads(assignment)
-        faculty_id = a.get("faculty_id")
-        room_id = a.get("room_id")
-        time_slot_id = a.get("time_slot_id")
-        batch_id = a.get("batch_id")
-        generation_id = a.get("generation_id")
+        ts_id = a.get("time_slot_id")
+        gen_id = a.get("generation_id")
 
-        # Check faculty conflict
-        fc = sb.table("timetable_entries").select("id").eq("time_slot_id", time_slot_id).eq("generation_id", generation_id).eq("faculty_id", faculty_id).execute()
-        if fc.data:
-            return json.dumps({"conflict": True, "reason": "faculty_busy"})
+        # 1. Faculty Conflict: Is this teacher already teaching in this timeslot?
+        f_check = sb.table("timetable_entries").select("id")\
+            .eq("time_slot_id", ts_id)\
+            .eq("generation_id", gen_id)\
+            .eq("faculty_id", a.get("faculty_id")).execute()
+        
+        if f_check.data:
+            return json.dumps({"conflict": True, "reason": "Faculty already assigned this slot"})
 
-        # Check room conflict
-        rc = sb.table("timetable_entries").select("id").eq("time_slot_id", time_slot_id).eq("generation_id", generation_id).eq("room_id", room_id).execute()
-        if rc.data:
-            return json.dumps({"conflict": True, "reason": "room_busy"})
+        # 2. Room Conflict: Is this room already occupied in this timeslot?
+        r_check = sb.table("timetable_entries").select("id")\
+            .eq("time_slot_id", ts_id)\
+            .eq("generation_id", gen_id)\
+            .eq("room_id", a.get("room_id")).execute()
+        
+        if r_check.data:
+            return json.dumps({"conflict": True, "reason": "Room already occupied"})
 
-        # Check batch conflict
-        bc = sb.table("timetable_entries").select("id").eq("time_slot_id", time_slot_id).eq("generation_id", generation_id).eq("batch_id", batch_id).execute()
-        if bc.data:
-            return json.dumps({"conflict": True, "reason": "batch_busy"})
+        # 3. Batch Conflict: Is this student batch already in another class?
+        b_check = sb.table("timetable_entries").select("id")\
+            .eq("time_slot_id", ts_id)\
+            .eq("generation_id", gen_id)\
+            .eq("batch_id", a.get("batch_id")).execute()
+        
+        if b_check.data:
+            return json.dumps({"conflict": True, "reason": "Batch already has a class this slot"})
 
-        return json.dumps({"conflict": False, "reason": "ok"})
+        return json.dumps({"conflict": False, "reason": "Available"})
     except Exception as e:
         return json.dumps({"conflict": True, "reason": str(e)})
 
