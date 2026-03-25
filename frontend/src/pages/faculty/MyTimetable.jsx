@@ -49,27 +49,37 @@ export default function MyTimetable() {
         console.log("2. Found Faculty Code:", code);
         setFacultyCode(code);
 
-        // 3. Fetch assignments from s6_timetable
+        // 3. Fetch ALL assignments from s6_timetable for this batch and status
         const { data: timetableData, error: tError } = await supabase
           .from('s6_timetable')
           .select('*')
           .eq('batch', selectedBatch)
-          .contains('faculty', [code])
           .eq('status', 'published');
 
         if (tError) throw tError;
-        console.log("3. Rows found in Timetable:", timetableData?.length);
+        console.log("3a. Total rows found in Timetable:", timetableData?.length || 0);
+
+        // 3b. Client-side filter: Keep only entries where faculty array contains this faculty code
+        const filteredData = timetableData.filter(entry => {
+          const facultyArray = Array.isArray(entry.faculty) ? entry.faculty : [entry.faculty];
+          const match = facultyArray.includes(code);
+          if (match) console.log("   → Found match for", code, "in entry:", entry.subject, entry.day, entry.period);
+          return match;
+        });
+        console.log("3b. Filtered rows for faculty", code + ":", filteredData.length);
 
         // 4. Map to Grid Component format
-        // NOTE: Field names match s6_timetable schema exactly
-        const formattedData = timetableData.map(item => ({
+        // NOTE: TimetableGrid expects these exact field names
+        const formattedData = filteredData.map(item => ({
           day: item.day,
-          period: item.period,
+          time_slot: item.period,  // TimetableGrid expects 'time_slot' not 'period'
           subject_name: item.subject,
           room_number: item.room_name,
-          type: item.type
+          type: item.type,
+          faculty_name: code  // Add faculty name so grid can display it
         }));
 
+        console.log("4. Formatted data:", formattedData);
         setSchedule(formattedData);
         setError(null);
 

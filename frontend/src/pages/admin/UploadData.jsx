@@ -57,7 +57,7 @@ export default function UploadData() {
         {status === 'success' && (
           <div style={{ background: '#f0fff4', border: '1px solid #c6f6d5', padding: '20px', borderRadius: '12px', textAlign: 'center' }}>
             <p style={{ color: '#2f855a', fontWeight: 700 }}>✅ Data Loaded Successfully!</p>
-            <p style={{ fontSize: '0.8rem', color: '#555' }}>24 Faculty, 50 Subjects, and 12 Rooms detected.</p>
+            <p style={{ fontSize: '0.8rem', color: '#555' }}>20 Faculty, 8 Subjects, and 6 Rooms detected.</p>
             <button className="btn-upload" style={{ background: '#2f855a' }} onClick={() => window.location.href='/admin/generate'}>Proceed to Generation</button>
           </div>
         )}
