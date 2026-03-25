@@ -16,12 +16,7 @@ export default function MyTimetable() {
   useEffect(() => {
     async function fetchTimetable() {
       try {
-        // Step 1: Get profile (e.g., const profile = await fetch('/api/auth/me')...)
-        // Step 2: Get schedule (e.g., const data = await fetch(`/api/timetable?faculty_id=${profile.faculty_id}`)...)
-        
-        // Simulating API loading delay
         setTimeout(() => {
-          // Toggle between mockData and [] to test the empty state
           setSchedule(mockData); 
           setLoading(false);
         }, 800);
