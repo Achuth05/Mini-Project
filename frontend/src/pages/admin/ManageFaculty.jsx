@@ -1,11 +1,72 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 export default function ManageFaculty() {
-  const [faculty] = useState([
-    { id: 1, name: 'Dr. Aris', dept: 'CSE', email: 'aris@univ.edu', load: '18h' },
-    { id: 2, name: 'Prof. Sarah', dept: 'IT', email: 'sarah@univ.edu', load: '14h' },
-    { id: 3, name: 'Dr. Kevin', dept: 'CSE', email: 'kevin@univ.edu', load: '16h' },
-  ]);
+  const [faculty, setFaculty] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchFaculty();
+  }, []);
+
+  const fetchFaculty = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch from faculty table where is_active = true
+      const { data: facultyData, error: fError } = await supabase
+        .from('faculty')
+        .select('id, faculty_code')
+        .eq('is_active', true)
+        .order('faculty_code', { ascending: true });
+
+      if (fError) throw fError;
+
+      // Fetch profiles for full_name
+      const { data: profilesData, error: pError } = await supabase
+        .from('profiles')
+        .select('id, full_name');
+
+      if (pError) {
+        console.warn('Could not fetch profiles:', pError.message);
+      }
+
+      // Fetch auth users for email
+      const { data: authData, error: aError } = await supabase
+        .from('auth.users')
+        .select('id, email');
+
+      if (aError) {
+        console.warn('Could not fetch auth users:', aError.message);
+      }
+
+      // Merge faculty, profile, and auth data
+      const merged = facultyData.map(fac => {
+        const profile = profilesData?.find(p => p.id === fac.id);
+        const authUser = authData?.find(a => a.id === fac.id);
+        return {
+          id: fac.id,
+          full_name: profile?.full_name || 'N/A',
+          faculty_code: fac.faculty_code,
+          email: authUser?.email || 'N/A'
+        };
+      });
+
+      setFaculty(merged);
+    } catch (err) {
+      console.error('Error fetching faculty:', err);
+      setError('Failed to load faculty data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div style={{ animation: 'fadeUp 0.6s ease-out' }}>
@@ -17,29 +78,41 @@ export default function ManageFaculty() {
           </button>
         </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'DM Sans' }}>
-          <thead>
-            <tr style={{ textAlign: 'left', color: '#888', fontSize: '0.8rem', borderBottom: '1px solid #eee' }}>
-              <th style={{ padding: '12px' }}>NAME</th>
-              <th style={{ padding: '12px' }}>DEPARTMENT</th>
-              <th style={{ padding: '12px' }}>EMAIL</th>
-              <th style={{ padding: '12px' }}>ACTIONS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {faculty.map(f => (
-              <tr key={f.id} style={{ borderBottom: '1px solid #fafafa' }}>
-                <td style={{ padding: '16px 12px', fontWeight: 600 }}>{f.name}</td>
-                <td style={{ padding: '16px 12px' }}>{f.dept}</td>
-                <td style={{ padding: '16px 12px', color: '#666' }}>{f.email}</td>
-                <td style={{ padding: '16px 12px' }}>
-                  <button style={{ background: 'none', border: 'none', cursor: 'pointer', marginRight: '10px' }}>✏️</button>
-                  <button style={{ background: 'none', border: 'none', cursor: 'pointer' }}>🗑️</button>
-                </td>
+        {error && (
+          <div style={{ background: '#fee', color: '#c33', padding: '12px', borderRadius: '8px', marginBottom: '20px' }}>
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>Loading faculty data...</div>
+        ) : faculty.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>No active faculty found</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'DM Sans' }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: '#888', fontSize: '0.8rem', borderBottom: '1px solid #eee' }}>
+                <th style={{ padding: '12px' }}>FULL NAME</th>
+                <th style={{ padding: '12px' }}>FACULTY CODE</th>
+                <th style={{ padding: '12px' }}>EMAIL</th>
+                <th style={{ padding: '12px' }}>ACTIONS</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {faculty.map(f => (
+                <tr key={f.id} style={{ borderBottom: '1px solid #fafafa' }}>
+                  <td style={{ padding: '16px 12px', fontWeight: 600 }}>{f.full_name}</td>
+                  <td style={{ padding: '16px 12px', fontFamily: 'monospace', fontSize: '0.9rem', fontWeight: 700, color: '#7EC8E3' }}>{f.faculty_code}</td>
+                  <td style={{ padding: '16px 12px', color: '#666' }}>{f.email}</td>
+                  <td style={{ padding: '16px 12px' }}>
+                    <button style={{ background: 'none', border: 'none', cursor: 'pointer', marginRight: '10px' }}>✏️</button>
+                    <button style={{ background: 'none', border: 'none', cursor: 'pointer' }}>🗑️</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

@@ -2,9 +2,12 @@ import { useState } from 'react';
 
 export default function ManageRooms() {
   const [rooms] = useState([
-    { id: 1, number: '402', type: 'Lecture Hall', capacity: 60 },
+    
     { id: 2, number: 'Lab 1', type: 'Computer Lab', capacity: 30 },
-    { id: 3, number: '201', type: 'Classroom', capacity: 45 },
+    { id: 2, number: 'Lab 2', type: 'Computer Lab', capacity: 30 },
+    { id: 3, number: 'CR101', type: 'Classroom', capacity: 45 },
+    { id: 3, number: 'CR102', type: 'Classroom', capacity: 45 },
+    { id: 3, number: 'CR103', type: 'Classroom', capacity: 45 },
   ]);
 
   return (

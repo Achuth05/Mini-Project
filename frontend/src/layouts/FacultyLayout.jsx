@@ -1,9 +1,18 @@
 import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
 
 export default function FacultyLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const user = { name: "Dr. Arshith", role: "Faculty" }; // Mock user
+  const [userName, setUserName] = useState("Faculty");
+
+  useEffect(() => {
+    // Fetch user name from localStorage (set during login)
+    const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
+    if (storedName) {
+      setUserName(storedName);
+    }
+  }, []);
 
   const menuItems = [
     { name: "My Timetable", path: "/faculty/timetable", icon: "📅" },
@@ -117,7 +126,7 @@ export default function FacultyLayout() {
       <main style={{ flex: 1 }}>
         <header className="top-bar">
           <div className="user-profile">
-            <span className="user-name">{user.name}</span>
+            <span className="user-name">{userName}</span>
             <button className="logout-btn" onClick={() => navigate("/login")}>Logout</button>
           </div>
         </header>

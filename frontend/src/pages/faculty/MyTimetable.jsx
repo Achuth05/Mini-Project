@@ -8,6 +8,7 @@ export default function MyTimetable() {
   const [loading, setLoading] = useState(true);
   const [selectedBatch, setSelectedBatch] = useState("A");
   const [facultyCode, setFacultyCode] = useState(null);
+  const [facultyName, setFacultyName] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
