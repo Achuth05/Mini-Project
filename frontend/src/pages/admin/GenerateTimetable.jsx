@@ -135,12 +135,45 @@ export default function GenerateTimetable() {
     }
   };
 
-  const startGen = () => {
+  const startGen = async () => {
     setIsGenerating(true);
     setCurrentStep(1);
     setShowPreview(false);
     setSelectedBatch('');
     setTimetableData([]);
+
+    try {
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        console.error('No auth token found. Please log in.');
+        setError('Please log in to generate timetables');
+        setIsGenerating(false);
+        return;
+      }
+
+      // Trigger backend agents with authorization token
+      const response = await fetch('/api/timetable/generate', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ semester: 6 })
+      });
+
+      if (!response.ok) {
+        console.error('Generation failed:', response.status, response.statusText);
+        setError(`Generation failed: ${response.statusText}`);
+        setIsGenerating(false);
+      }
+      // Backend runs silently, no need to wait or poll
+    } catch (error) {
+      console.error('Error triggering agents:', error);
+      setError(`Error: ${error.message}`);
+      setIsGenerating(false);
+    }
   };
 
   return (

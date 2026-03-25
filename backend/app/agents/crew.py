@@ -292,25 +292,18 @@ def run_scheduling_crew(generation_id: str, semester: int = 6):
     try:
         result = _run_crew_for_semester(generation_id, semester=semester)
         
-        saved_count = save_to_supabase_manually(result.raw, generation_id)
+        # Print result to terminal for visibility
+        print(f"\n{'='*80}")
+        print(f"[Orchestrator] ✅ Generation {generation_id} completed!")
+        print(f"{'='*80}")
+        print(f"\nCrew Output:\n{result.raw}")
+        print(f"{'='*80}\n")
         
-        if saved_count >= 90:
-            generation_status[generation_id] = {
-                "status": "completed",
-                "saved_count": saved_count,
-                "msg": "Full 90-slot timetable generated and saved successfully."
-            }
-        else:
-            generation_status[generation_id] = {
-                "status": "partial_success",
-                "saved_count": saved_count,
-                "msg": f"Saved {saved_count}/90 entries. Check for formatting errors."
-            }
-            
-        print(f"\n[Orchestrator] ✅ Generation {generation_id} process finished.")
+        generation_status[generation_id] = "completed"
         return generation_status[generation_id]
 
     except Exception as e:
-        generation_status[generation_id] = f"failed: {str(e)}"
-        print(f"\n[Orchestrator] ❌ Failed: {str(e)}")
+        error_msg = f"failed: {str(e)}"
+        generation_status[generation_id] = error_msg
+        print(f"\n[Orchestrator] ❌ {error_msg}")
         raise e

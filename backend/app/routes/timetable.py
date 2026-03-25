@@ -51,35 +51,6 @@ def get_dummy():
 @require_auth
 def get_status(generation_id):
     status = generation_status.get(generation_id, 'not_found')
-
-    # If completed — fetch actual saved entries from DB
-    if isinstance(status, dict) and status.get('status') == 'completed':
-        try:
-            db_res = sb.table('s6_timetable') \
-                .select('*') \
-                .eq('generation_id', generation_id) \
-                .execute()
-            return jsonify({
-                'generation_id': generation_id,
-                'status': 'completed',
-                'result': db_res.data or []
-            })
-        except Exception as e:
-            return jsonify({
-                'generation_id': generation_id,
-                'status': 'completed',
-                'result': [],
-                'error': str(e)
-            })
-
-    # Still running
-    if isinstance(status, dict):
-        return jsonify({
-            'generation_id': generation_id,
-            'status': status.get('status', 'unknown'),
-            'result': None
-        })
-
     return jsonify({
         'generation_id': generation_id,
         'status': status
