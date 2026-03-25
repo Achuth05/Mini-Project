@@ -1,6 +1,7 @@
 import os
 import json
 from dotenv import load_dotenv
+from .tools import sb
 from crewai import Agent, Task, Crew, Process, LLM
 from .tools import (
     get_faculty_tool,
@@ -9,7 +10,8 @@ from .tools import (
     get_timeslots_tool,
     get_batches_tool,
     get_availability_tool,
-    check_conflict_tool
+    check_conflict_tool,
+    save_timetable_tool
 )
 
 load_dotenv()
@@ -22,10 +24,58 @@ def _build_llm():
         model=f"azure/{os.getenv('AZURE_OPENAI_DEPLOYMENT')}",
         api_key=os.getenv("AZURE_OPENAI_API_KEY"),
         base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        api_version="2024-02-01"
+        api_version="2024-02-01",
+        max_tokens=4000
+
     )
 
+import re
 
+def save_to_supabase_manually(json_raw, generation_id):
+    try:
+        # 1. AGGRESSIVE CLEANING: Find the first '{' and the last '}'
+        # This removes any "Here is your JSON" or markdown backticks automatically
+        match = re.search(r'\{.*\}', json_raw, re.DOTALL)
+        if not match:
+            print("❌ No JSON object found in the AI output.")
+            return 0
+            
+        clean_json = match.group(0)
+        data = json.loads(clean_json)
+        
+        schedule_entries = data.get("schedule", [])
+        
+        if not schedule_entries:
+            print("❌ 'schedule' key is missing or empty.")
+            return 0
+
+        # 2. Map and Save (Keep your existing loop)
+        formatted_entries = []
+        for entry in schedule_entries:
+            formatted_entries.append({
+                "generation_id": generation_id,
+                "batch_id": entry.get("batch_id"),
+                "subject_id": entry.get("subject_id"),
+                "time_slot_id": entry.get("time_slot_id"),
+                "faculty_ids": entry.get("faculty_ids", []),
+                "room_name": str(entry.get("room", "")),
+                "entry_type": entry.get("type", "lecture"),
+                "semester": 6
+            })
+
+        saved_count = 0
+        for i in range(0, len(formatted_entries), 50):
+            chunk = formatted_entries[i:i+50]
+            result = sb.table("s6_timetable").insert(chunk).execute()
+            saved_count += len(result.data)
+            
+        return saved_count
+    except json.JSONDecodeError as e:
+        print(f"❌ JSON Syntax Error at {e.pos}: Check if the AI cut off the end of the text.")
+        return 0
+    except Exception as e:
+        print(f"❌ Save Error: {str(e)}")
+        return 0
 def _run_crew_for_semester(generation_id: str, semester: int):
     llm = _build_llm()
 
@@ -78,6 +128,7 @@ def _run_crew_for_semester(generation_id: str, semester: int):
         allow_delegation=False,
         max_iter=5
     )
+
 
     # ── TASKS ─────────────────────────────────────────────────────────────────
 
@@ -223,6 +274,8 @@ def _run_crew_for_semester(generation_id: str, semester: int):
         context=[schedule_task]
     )
 
+
+    
     crew = Crew(
         agents=[data_collector, scheduler, reporter],
         tasks=[collect_task, schedule_task, report_task],
@@ -239,12 +292,24 @@ def run_scheduling_crew(generation_id: str, semester: int = 6):
     try:
         result = _run_crew_for_semester(generation_id, semester=semester)
         
-        generation_status[generation_id] = {
-            "status": "completed",
-            "result": result.raw
-        }
-        print(f"\n[Orchestrator] ✅ Generation {generation_id} completed.")
+        saved_count = save_to_supabase_manually(result.raw, generation_id)
+        
+        if saved_count >= 90:
+            generation_status[generation_id] = {
+                "status": "completed",
+                "saved_count": saved_count,
+                "msg": "Full 90-slot timetable generated and saved successfully."
+            }
+        else:
+            generation_status[generation_id] = {
+                "status": "partial_success",
+                "saved_count": saved_count,
+                "msg": f"Saved {saved_count}/90 entries. Check for formatting errors."
+            }
+            
+        print(f"\n[Orchestrator] ✅ Generation {generation_id} process finished.")
         return generation_status[generation_id]
+
     except Exception as e:
         generation_status[generation_id] = f"failed: {str(e)}"
         print(f"\n[Orchestrator] ❌ Failed: {str(e)}")

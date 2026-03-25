@@ -35,20 +35,51 @@ def generate():
         'status': 'started'
     })
 
-
+@timetable_bp.route('/api/timetable/dummy', methods=['GET'])
+@require_auth
+def get_dummy():
+    try:
+        res = sb.table('s6_timetable') \
+            .select('*') \
+            .eq('generation_id', '00000000-0000-0000-0000-000000000006') \
+            .execute()
+        return jsonify(res.data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 @timetable_bp.route('/api/timetable/status/<generation_id>', methods=['GET'])
 @require_auth
 def get_status(generation_id):
     status = generation_status.get(generation_id, 'not_found')
-    
-    # Check if status is the completed dictionary from run_scheduling_crew
+
+    # If completed — fetch actual saved entries from DB
+    if isinstance(status, dict) and status.get('status') == 'completed':
+        try:
+            db_res = sb.table('s6_timetable') \
+                .select('*') \
+                .eq('generation_id', generation_id) \
+                .execute()
+            return jsonify({
+                'generation_id': generation_id,
+                'status': 'completed',
+                'result': db_res.data or []
+            })
+        except Exception as e:
+            return jsonify({
+                'generation_id': generation_id,
+                'status': 'completed',
+                'result': [],
+                'error': str(e)
+            })
+
+    # Still running
     if isinstance(status, dict):
         return jsonify({
             'generation_id': generation_id,
             'status': status.get('status', 'unknown'),
-            'result': status.get('result', None)
+            'result': None
         })
-        
+
     return jsonify({
         'generation_id': generation_id,
         'status': status

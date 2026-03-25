@@ -1,12 +1,21 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-// import { useAuth } from '../context/AuthContext' <--- Commented out for now
+import { useState, useEffect } from 'react'
 
 export default function StudentLayout() {
-  // const { user, logout } = useAuth() <--- Commented out for now
   const navigate = useNavigate()
+  const [userName, setUserName] = useState('Student')
+
+  useEffect(() => {
+    // Get user name from localStorage (set during login)
+    const name = localStorage.getItem('userName')
+    if (name) setUserName(name)
+  }, [])
 
   const handleLogout = () => {
-    // logout()
+    // Clear auth data
+    localStorage.removeItem('token')
+    localStorage.removeItem('userRole')
+    localStorage.removeItem('userName')
     navigate('/login')
   }
 
@@ -58,8 +67,7 @@ export default function StudentLayout() {
           <span className="nav-logo" onClick={() => navigate("/")} style={{cursor: 'pointer'}}>
             TimeTablue
           </span>
-          {/* Mocking the user name since Auth is disabled */}
-          <span className="user-chip">👋 Guest Student</span>
+          <span className="user-chip">👋 {userName}</span>
         </div>
         <button className="logout-btn" onClick={handleLogout}>LOGOUT</button>
       </nav>

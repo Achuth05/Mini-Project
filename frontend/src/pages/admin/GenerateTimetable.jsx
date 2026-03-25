@@ -1,148 +1,147 @@
-import { useState, useEffect } from 'react';
-import TimetableGrid from '../../components/TimetableGrid';
+// File: src/pages/faculty/MyTimetable.jsx
+import { useEffect, useState } from "react";
+import TimetableGrid from "../../components/TimetableGrid"; // Adjust path as needed
 
-const AGENTS = [
-  { id: 1, name: 'Data Collector Agent', desc: 'Gathering faculty preferences and room capacities...' },
-  { id: 2, name: 'Constraint Analyzer', desc: 'Checking for overlapping slots and teacher availability...' },
-  { id: 3, name: 'Scheduler Agent', desc: 'Generating optimal slot assignments using AI...' },
-  { id: 4, name: 'Validator Agent', desc: 'Final audit of the generated schedule...' },
-  { id: 5, name: 'Reporter Agent', desc: 'Formatting data for final review...' }
-];
+export default function MyTimetable() {
+  const [schedule, setSchedule] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-export default function GenerateTimetable() {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-
-  // Mock data for the review state
-  const generatedMockData = [
-    { day: 'Monday', time_slot: '09:00', subject_name: 'Theory of Computation', faculty_name: 'Dr. Aris', room_number: '402' },
-    { day: 'Tuesday', time_slot: '11:00', subject_name: 'Database Systems', faculty_name: 'Prof. Sarah', room_number: 'Lab 1' },
-    { day: 'Wednesday', time_slot: '09:00', subject_name: 'Operating Systems', faculty_name: 'Dr. Kevin', room_number: '201' },
-    { day: 'Thursday', time_slot: '12:00', subject_name: 'Machine Learning', faculty_name: 'Dr. Alice', room_number: '305' },
-    { day: 'Friday', time_slot: '02:00', subject_name: 'Compiler Design', faculty_name: 'Prof. Smith', room_number: '402' }
+  // Mock data for demonstration - you can replace this with your API results
+  const mockData = [
+    { day: "Monday", time_slot: "10:00 AM", subject_name: "Data Structures", room_number: "402" },
+    { day: "Wednesday", time_slot: "02:00 PM", subject_name: "Operating Systems", room_number: "101" },
+    { day: "Friday", time_slot: "09:00 AM", subject_name: "Computer Networks", room_number: "305" },
   ];
 
-  const startGen = () => {
-    setIsGenerating(true);
-    setCurrentStep(1);
-    setShowPreview(false);
-  };
-
   useEffect(() => {
-    if (isGenerating && currentStep > 0 && currentStep <= AGENTS.length) {
-      const timer = setTimeout(() => {
-        setCurrentStep(prev => prev + 1);
-      }, 2000); // 2 seconds per agent for UI testing
-      return () => clearTimeout(timer);
+    async function fetchTimetable() {
+      try {
+        setTimeout(() => {
+          setSchedule(mockData); 
+          setLoading(false);
+        }, 800);
+      } catch (err) {
+        console.error("Failed to fetch timetable", err);
+        setLoading(false);
+      }
     }
-  }, [currentStep, isGenerating]);
+    fetchTimetable();
+  }, []);
 
   return (
-    <div style={{ animation: 'fadeUp 0.6s ease-out' }}>
+    <div style={{ animation: "fadeIn 0.5s ease-out" }}>
       <style>{`
-        .admin-card {
-          background: #fff;
-          border-radius: 24px;
-          padding: 40px;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.03);
-          border: 1px solid rgba(0,0,0,0.02);
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-        .agent-item {
+
+        .page-header { 
+          display: flex; 
+          justify-content: space-between; 
+          align-items: flex-end; 
+          margin-bottom: 40px; 
+        }
+
+        .page-title { 
+          font-family: 'Syne', sans-serif; 
+          font-size: 2.2rem; 
+          font-weight: 800; 
+          color: #111; 
+          line-height: 1.1;
+        }
+
+        .print-btn { 
+          background: #111; 
+          color: #fff; 
+          border: none; 
+          padding: 14px 28px; 
+          border-radius: 12px; 
+          font-family: 'Syne', sans-serif; 
+          font-weight: 700; 
+          cursor: pointer; 
+          transition: all 0.2s;
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          background: #fafafa;
-          padding: 20px;
-          border-radius: 16px;
-          margin-bottom: 12px;
-          border: 1px solid transparent;
-          transition: 0.3s;
+          gap: 8px;
         }
-        .agent-active {
-          background: #fff;
-          border-color: #7EC8E3;
-          box-shadow: 0 8px 20px rgba(126, 200, 227, 0.15);
-          transform: scale(1.02);
+
+        .print-btn:hover { 
+          background: #333;
+          transform: translateY(-2px); 
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-        .btn-primary {
-          background: #111; color: #fff; font-family: 'Syne'; font-weight: 700;
-          padding: 16px 40px; border-radius: 12px; border: none; cursor: pointer;
-          width: 100%; transition: 0.2s;
+
+        .empty-state { 
+          background: #fff; 
+          border: 2px dashed #e0e7ff; 
+          border-radius: 24px; 
+          padding: 100px 40px; 
+          text-align: center; 
+          color: #888; 
         }
-        .btn-primary:hover { background: #222; transform: translateY(-2px); }
+
+        .loading-spinner {
+          font-family: 'DM Sans', sans-serif;
+          color: #7EC8E3;
+          font-weight: 500;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        @media print {
+          .sidebar, .top-bar, .print-btn { display: none !important; }
+          .content-area { padding: 0 !important; margin: 0 !important; }
+          body { background: white !important; }
+        }
       `}</style>
 
-      {/* ── STATE 1: NOT STARTED ── */}
-      {!isGenerating && !showPreview && (
-        <div className="admin-card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🤖</div>
-          <h2 style={{ fontFamily: 'Syne', fontWeight: 800, marginBottom: '12px' }}>AI Orchestrator</h2>
-          <p style={{ color: '#777', marginBottom: '30px', maxWidth: '400px', margin: '0 auto 30px' }}>
-            Ready to trigger the multi-agent system? This will analyze all constraints and generate the most optimal schedule.
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">My Weekly<br />Schedule</h1>
+          <p style={{ color: "#888", marginTop: "12px", fontFamily: "'DM Sans', sans-serif" }}>
+            Spring Semester 2026 • Faculty View
           </p>
-          <button className="btn-primary" onClick={startGen} style={{ maxWidth: '300px' }}>
-            Trigger Agents
+        </div>
+        
+        {schedule.length > 0 && (
+          <button className="print-btn" onClick={() => window.print()}>
+            <span>🖨️</span> Print Timetable
           </button>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="loading-spinner">
+          <div className="spinner-dot"></div> {/* Add your spinner CSS here if desired */}
+          Fetching your personalized schedule...
         </div>
-      )}
-
-      {/* ── STATE 2: GENERATING ── */}
-      {isGenerating && !showPreview && (
-        <div className="admin-card">
-          <h3 style={{ fontFamily: 'Syne', fontWeight: 800, marginBottom: '24px' }}>System Progress</h3>
-          {AGENTS.map((agent, idx) => {
-            const stepNum = idx + 1;
-            const isDone = currentStep > stepNum;
-            const isActive = currentStep === stepNum;
-
-            return (
-              <div key={agent.id} className={`agent-item ${isActive ? 'agent-active' : ''}`} style={{ opacity: stepNum > currentStep ? 0.4 : 1 }}>
-                <div>
-                  <h4 style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: '1rem' }}>{agent.name}</h4>
-                  <p style={{ fontSize: '0.8rem', color: '#888' }}>{agent.desc}</p>
-                </div>
-                <div style={{ fontSize: '1.2rem' }}>
-                  {isDone ? '✅' : isActive ? '🔄' : '⏳'}
-                </div>
-              </div>
-            );
-          })}
-
-          {currentStep > AGENTS.length && (
-            <button 
-              className="btn-primary" 
-              style={{ marginTop: '20px', background: '#7EC8E3', color: '#111' }}
-              onClick={() => setShowPreview(true)}
-            >
-              Review Generated Timetable →
-            </button>
-          )}
+      ) : schedule.length > 0 ? (
+        <div style={{ 
+          background: "#fff", 
+          padding: "24px", 
+          borderRadius: "24px", 
+          boxShadow: "0 20px 50px rgba(0,0,0,0.04)",
+          border: "1px solid #f0f4f8"
+        }}>
+           <TimetableGrid data={schedule} readOnly={true} />
         </div>
-      )}
-
-      {/* ── STATE 3: REVIEW TIMETABLE ── */}
-      {showPreview && (
-        <div className="admin-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-            <div>
-              <h2 style={{ fontFamily: 'Syne', fontWeight: 800 }}>Generated Review</h2>
-              <p style={{ color: '#777', fontSize: '0.9rem' }}>Review the AI output before publishing to students.</p>
-            </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="btn-primary" style={{ background: '#f5f5f5', color: '#111', padding: '12px 24px' }} onClick={() => setShowPreview(false)}>
-                Back
-              </button>
-              <button className="btn-primary" style={{ background: '#7EC8E3', color: '#111', padding: '12px 24px' }} onClick={() => window.location.href='/admin/publish'}>
-                Looks Good, Publish
-              </button>
-            </div>
-          </div>
-
-          {/* Full Grid Preview */}
-          <div style={{ border: '1px solid #eee', borderRadius: '16px', padding: '20px', background: '#fafafa' }}>
-            <TimetableGrid data={generatedMockData} readOnly={true} />
-          </div>
+      ) : (
+        <div className="empty-state">
+          <div style={{ fontSize: "3rem", marginBottom: "20px" }}>📅</div>
+          <h3 style={{ 
+            color: "#111", 
+            marginBottom: "12px", 
+            fontFamily: 'Syne', 
+            fontSize: "1.5rem" 
+          }}>
+            No Schedule Published
+          </h3>
+          <p style={{ fontFamily: "'DM Sans', sans-serif", maxWidth: "400px", margin: "0 auto", lineHeight: "1.6" }}>
+            The academic department hasn't finalized the timetable for this semester yet. 
+            Once published, your classes will appear here automatically.
+          </p>
         </div>
       )}
     </div>

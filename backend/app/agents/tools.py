@@ -70,14 +70,82 @@ def check_conflict_tool(assignment: str) -> str:
         return json.dumps({"conflict": False, "reason": "ok"})
     except Exception as e:
         return json.dumps({"conflict": True, "reason": str(e)})
-
+    
 @tool("Save Timetable Tool")
 def save_timetable_tool(entries: str) -> str:
-    """Saves final list of entries to DB."""
+    """Saves S6 timetable entries. Handles truncated/partial JSON."""
+    import re
     try:
-        data = json.loads(entries)
-        if not data: return json.dumps({"saved": 0, "error": "No data"})
-        result = sb.table("timetable_entries").insert(data).execute()
-        return json.dumps({"saved": len(result.data), "error": None})
+        raw = entries.strip()
+
+        # Step 1: Try direct parse
+        data = None
+        try:
+            data = json.loads(raw)
+        except Exception:
+            pass
+
+        # Step 2: If failed, extract all complete {...} objects using regex
+        if data is None:
+            objects_raw = re.findall(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}', raw)
+            data = []
+            for obj_str in objects_raw:
+                try:
+                    obj = json.loads(obj_str)
+                    # Only keep objects that look like timetable entries
+                    if obj.get("batch") and obj.get("day") and obj.get("period"):
+                        data.append(obj)
+                except Exception:
+                    continue
+
+        # Step 3: If data is dict with schedule key, extract array
+        if isinstance(data, dict):
+            data = data.get("schedule", data.get("entries", []))
+
+        if not data or not isinstance(data, list):
+            return json.dumps({"saved": 0, "error": "No valid entries found"})
+
+        # Step 4: Clean and normalize each entry
+        cleaned = []
+        for row in data:
+            if not isinstance(row, dict):
+                continue
+            if not row.get("batch") or not row.get("day") or not row.get("period"):
+                continue
+            cleaned.append({
+                "generation_id": str(row.get("generation_id", "")),
+                "batch":         str(row.get("batch", "")),
+                "day":           str(row.get("day", "")),
+                "period":        int(row.get("period", 0)),
+                "subject":       str(row.get("subject", "")),
+                "type":          str(row.get("type") or row.get("entry_type", "lecture")),
+                "faculty":       row.get("faculty", []),
+                "room":          str(row.get("room", "")),
+                "subject_id":    row.get("subject_id"),
+                "faculty_ids":   row.get("faculty_ids", []),
+                "batch_id":      row.get("batch_id"),
+                "time_slot_id":  row.get("time_slot_id"),
+                "status":        "draft"
+            })
+
+        if not cleaned:
+            return json.dumps({"saved": 0, "error": "No valid entries after cleaning"})
+
+        # Step 5: Save in chunks
+        saved = 0
+        errors = []
+        for i in range(0, len(cleaned), 50):
+            chunk = cleaned[i:i+50]
+            try:
+                result = sb.table("s6_timetable").insert(chunk).execute()
+                saved += len(result.data)
+            except Exception as e:
+                errors.append(str(e))
+                print(f"❌ Save Error: {e}")
+
+        print(f"✅ Saved {saved}/{len(cleaned)} entries to s6_timetable")
+        return json.dumps({"saved": saved, "total": len(cleaned), "error": errors if errors else None})
+
     except Exception as e:
+        print(f"❌ Save Error: {e}")
         return json.dumps({"saved": 0, "error": str(e)})
