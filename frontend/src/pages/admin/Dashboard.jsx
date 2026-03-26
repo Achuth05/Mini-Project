@@ -16,6 +16,7 @@ export default function AdminDashboard() {
   ]);
 
   const [workloadData, setWorkloadData] = useState([]);
+  const [showAllFaculty, setShowAllFaculty] = useState(false); // 👈 new
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,29 +27,22 @@ export default function AdminDashboard() {
     try {
       setLoading(true);
 
-      // Fetch subject count
       const { data: subjects, error: subError } = await supabase
         .from('subjects')
         .select('id', { count: 'exact' });
-
       if (subError) console.error('Error fetching subjects:', subError);
 
-      // Fetch faculty count (is_active = true)
       const { data: faculty, error: facError } = await supabase
         .from('faculty')
         .select('id', { count: 'exact' })
         .eq('is_active', true);
-
       if (facError) console.error('Error fetching faculty:', facError);
 
-      // Fetch rooms count
       const { data: rooms, error: roomError } = await supabase
         .from('rooms')
         .select('id', { count: 'exact' });
-
       if (roomError) console.error('Error fetching rooms:', roomError);
 
-      // Update stats with real data
       setStats(prev => [
         { ...prev[0], value: faculty?.length?.toString() || '0' },
         { ...prev[1], value: rooms?.length?.toString() || '0' },
@@ -56,19 +50,47 @@ export default function AdminDashboard() {
         { ...prev[3] }
       ]);
 
-      // Fetch faculty workload data
-      const { data: facultyProfiles, error: fpError } = await supabase
-        .from('profiles')
-        .select('id, full_name');
+      const { data: timetableData, error: ttError } = await supabase
+        .from('s6_timetable')
+        .select('faculty');
 
-      if (!fpError && facultyProfiles) {
-        // Create workload data from faculty
-        const workload = facultyProfiles.slice(0, 4).map((f, i) => ({
-          name: f.full_name || 'Faculty ' + (i + 1),
-          hours: Math.floor(Math.random() * 8) + 12, // Random hours between 12-20
-          dept: 'CSE' // Default department
-        }));
-        setWorkloadData(workload);
+      if (!ttError && timetableData && timetableData.length > 0) {
+        const facultyHours = {};
+        timetableData.forEach(entry => {
+          if (entry.faculty && Array.isArray(entry.faculty)) {
+            entry.faculty.forEach(code => {
+              if (code && code !== '--') {
+                facultyHours[code] = (facultyHours[code] || 0) + 1;
+              }
+            });
+          }
+        });
+
+        const facultyCodes = Object.keys(facultyHours);
+        const { data: facultyData, error: fError } = await supabase
+          .from('faculty')
+          .select('faculty_code, full_name')
+          .in('faculty_code', facultyCodes);
+
+        if (!fError && facultyData) {
+          const facultyMap = {};
+          facultyData.forEach(f => {
+            if (facultyHours[f.faculty_code]) {
+              facultyMap[f.faculty_code] = {
+                name: f.full_name || f.faculty_code,
+                hours: facultyHours[f.faculty_code],
+                dept: 'N/A'
+              };
+            }
+          });
+
+          // 👇 Store ALL faculty sorted, no slice
+          const workload = Object.values(facultyMap)
+            .sort((a, b) => b.hours - a.hours);
+          setWorkloadData(workload);
+        }
+      } else if (ttError) {
+        console.error('Error fetching timetable data:', ttError);
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -76,6 +98,9 @@ export default function AdminDashboard() {
       setLoading(false);
     }
   };
+
+  // 👇 Slice here based on toggle state
+  const displayedFaculty = showAllFaculty ? workloadData : workloadData.slice(0, 4);
 
   return (
     <div style={{ animation: 'fadeUp 0.6s ease-out' }}>
@@ -116,7 +141,6 @@ export default function AdminDashboard() {
         }
       `}</style>
 
-      {/* 4 Quick Stat Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '30px' }}>
         {stats.map(s => (
           <div key={s.label} className="admin-card" style={{ marginBottom: 0 }}>
@@ -127,13 +151,12 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      {/* Faculty Workload Section */}
       <div className="admin-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <h3 style={{ fontFamily: 'Syne', fontWeight: 800 }}>Faculty Workload</h3>
           <span className="status-badge">Semester 6</span>
         </div>
-        
+
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>Loading faculty data...</div>
         ) : workloadData.length === 0 ? (
@@ -149,7 +172,7 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {workloadData.map((f, i) => (
+                {displayedFaculty.map((f, i) => ( // 👈 use displayedFaculty
                   <tr key={i}>
                     <td style={{ fontWeight: 600 }}>{f.name}</td>
                     <td style={{ color: '#666' }}>{f.dept}</td>
@@ -160,20 +183,25 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
-            
-            <div style={{ marginTop: '24px', textAlign: 'center' }}>
-              <button style={{ 
-                background: 'none', 
-                border: 'none', 
-                color: '#7EC8E3', 
-                fontFamily: 'Syne', 
-                fontWeight: 700, 
-                cursor: 'pointer',
-                fontSize: '0.9rem'
-              }}>
-                View Full Report →
-              </button>
-            </div>
+
+            {workloadData.length > 4 && ( // 👈 only show button if there's more
+              <div style={{ marginTop: '24px', textAlign: 'center' }}>
+                <button
+                  onClick={() => setShowAllFaculty(prev => !prev)} // 👈 toggle
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#7EC8E3',
+                    fontFamily: 'Syne',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  {showAllFaculty ? '← Show Less' : 'View Full Report →'} // 👈 dynamic label
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
